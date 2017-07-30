@@ -1,8 +1,15 @@
 package javaapplication15;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -11,36 +18,49 @@ import matlabcontrol.MatlabConnectionException;
 import matlabcontrol.MatlabInvocationException;
 import matlabcontrol.MatlabProxy;
 import matlabcontrol.MatlabProxyFactory;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 
 
 public class Principal 
-{
-    static int entrenamientos = 0;
-
-    public static void main (String [] args) throws InterruptedException, FileNotFoundException, UnsupportedEncodingException, MatlabConnectionException, MatlabInvocationException
+{   
+    static boolean matlab = true; // al poner esto en true entrena la red
+    static int entrenamientos = 0; // en matlab y no la de nodejs
+    static ArrayList<Matrix> matrices;
+    static ArrayList<Integer> soluciones;
+    static int empates = 0;
+    static int ganadas = 0;
+    static int perdidas = 0;
+    public static void main (String [] args) throws InterruptedException, FileNotFoundException, UnsupportedEncodingException, MatlabConnectionException, MatlabInvocationException, JSONException, IOException
     {
-       
-       /*PrintWriter writer = new PrintWriter("train_all.m", "UTF-8");
-       long time = System.currentTimeMillis();
-       llenar();
-        for (int i = 0; i < matrices.size(); i++) {
-            writer.println("[net, tr] = train(net,"+matrices.get(i)+", "+ toBinaryStringArray(soluciones.get(i))+")");
+        if(matlab)
+        {
+            MatLabManager.getInstance().exec("load net");
+            MatLabManager.getInstance().exec("clear train");
         }
-       System.out.println("Resueltos:"+matrices.size());
-       System.out.println("Time:"+(System.currentTimeMillis() - time));
-       writer.close();*/
-        MatLabManager matlab = MatLabManager.getInstance();
-        matlab.exec("load net");
-        matlab.exec("clear train");
-        for (int i = 0; i < 8000; i++) {
-            jugarContraMaquina(matlab);
+            
+        
+        for (int i = 0; i < 100; i++) {
+            jugarContraMaquina();
+            
         }
         System.out.println("Entrenamientos:"+entrenamientos);
-        matlab.exec("save net");
-        Thread.sleep(1000);
-        matlab.kill();
-      
+        System.out.println("ganadas:"+ganadas); 
+        System.out.println("perdidas:"+perdidas); 
+        System.out.println("empates:"+empates);
+        if(matlab)
+        {
+            MatLabManager.getInstance().exec("save net");
+            MatLabManager.getInstance().kill();
+        }
     }   
     
    
@@ -80,7 +100,7 @@ public class Principal
     }
     
     private static void llenar(ByCondition condition)
-    {/*
+    {
         Matrix m;
         int [] pos;
         for (int i = 0; i <500000; i++) 
@@ -100,7 +120,7 @@ public class Principal
                   
                 }
             }      
-        }*/
+        }
     }
     
     
@@ -120,12 +140,14 @@ public class Principal
         for (int i = 0; i < 4 - nums; i++) {
             str = "0" + str;
         }
-                    
-       return "[ "+str.replaceAll(".", "$0; ")+"]";
+       if(matlab)
+           return "[ "+str.replaceAll(".", "$0; ")+"]";
+       else
+            return "[ "+str.replaceAll(".", "$0, ")+"]";
         
     }
 
-    private static void jugarContraMaquina(MatLabManager matlab) throws MatlabInvocationException, InterruptedException 
+    private static void jugarContraMaquina() throws MatlabInvocationException, InterruptedException, JSONException, IOException, MatlabConnectionException 
     {
       Random r = new Random();
       boolean maquinaFirst = r.nextBoolean();
@@ -133,50 +155,57 @@ public class Principal
       Matrix m = new Matrix("");
       while(!ganador)
       {
-        if(m.resuelta() || m.llena())
-        {
-            ganador = true;
-            System.out.println("Alguien Gano?:"+maquinaFirst);
-            break;
-        }
-        Thread.sleep(100);
+        if(juegoFinalizado(m))
+                break;
 
         if(maquinaFirst)
         {
             jugarMaquina(m,r);
-            if(m.resuelta() || m.llena())
-            {
-                ganador = true;
-                System.out.println("Alguien Gano?:"+maquinaFirst);
+            if(juegoFinalizado(m))
                 break;
-            }
-            jugarNeurona(m,matlab);
+            jugarNeurona(m);
         }
         else
         {
-            jugarNeurona(m,matlab);
-            if(m.resuelta() || m.llena())
-            {
-                ganador = true;
-                System.out.println("Alguien Gano?:"+maquinaFirst);
+            jugarNeurona(m);
+            if(juegoFinalizado(m))
                 break;
-            }
+           
             jugarMaquina(m,r);
         }
-
+        Thread.sleep(100);
       }
     }
-
-    private static void jugarNeurona(Matrix m, MatLabManager matlab) throws MatlabInvocationException 
+    
+    public static boolean juegoFinalizado(Matrix m)
     {
-       String s = "round(sim(net,"+m.toString()+"));";
-       int position = matlab.execForPosition(s);
+        if(m.resuelta() || m.llena())
+        {
+          if(m.resuelta(1))
+              ganadas++;
+          else if(m.resuelta(2))
+              perdidas++;
+          else
+              empates++;
+          return true;
+        }
+        return false;
+    }
+
+    private static void jugarNeurona(Matrix m) throws MatlabInvocationException, JSONException, IOException, MatlabConnectionException 
+    {
+       int position;
+       if(matlab)
+        position = MatLabManager.getInstance().execForPosition(m);
+       else
+           position = execForPosition(m);
+       
        System.out.println("Posicion a jugar Neurona:"+position);
        int []pos = generatePos(position);
        int []mejor = buscarSiguienteTapeGanada(m);
        if(!m.juega(pos[0], pos[1]) || position >= 9 || 
                (mejor != null && pos[0] != mejor[0] && pos[1] != mejor[1]))
-          corregir(m,matlab); 
+          corregir(m); 
        else
           m.jugar(pos[0], pos[1], 1);
     }
@@ -193,13 +222,14 @@ public class Principal
         
     }
 
-    private static void corregir(Matrix m, MatLabManager matlab) throws MatlabInvocationException 
+    private static void corregir(Matrix m) throws MatlabInvocationException, JSONException, IOException, MatlabConnectionException 
     {
         int [] pos = buscarMejorJuego(m);
         int p = pos[0] * 3 + pos[1];
-        String s = "[net, tr] = train(net,"+m.toString()+","+toBinaryStringArray(p)+");";
-        System.out.println("Enviando:"+s);
-        matlab.exec(s);
+        if(matlab)
+            MatLabManager.getInstance().exec("[net tr] = train(net,"+m.toString()+","+toBinaryStringArray(p)+");");
+        else
+            entrenar(m,p);
         m.jugar(pos[0],pos[1],1);
         entrenamientos++;
     }
@@ -256,9 +286,43 @@ public class Principal
         }
         return null;
     }
+
+    private static int execForPosition(Matrix m) throws JSONException, IOException 
+    {
+        String req = "{'game':"+m.toString()+"}";
+        JSONObject o = new JSONObject(req);
+        System.out.println("Enviando:"+o);
+        o = executePost("http://localhost:5000/play",o);
+        System.out.println("Recibiendo:"+o);
+        return o.getInt("result");
+    }
+
+    private static void entrenar(Matrix m, int p) throws IOException, JSONException 
+    {
+        String s = "{ 'game':"+m.toString()+", 'target':"+toBinaryStringArray(p)+", 'key':'MOTA RULES'}";
+        System.out.println("Enviando:"+s);
+        JSONObject obj = new JSONObject(s);
+        obj = executePost("http://localhost:5000/train",obj);
+        System.out.println("Recibiendo:"+obj.toString());
+    }
     
     interface ByCondition 
     {
         boolean condition(Matrix m,int x, int y);
+    }
+    
+    
+    public static JSONObject executePost(String targetURL, JSONObject o) throws IOException, JSONException 
+    {
+       
+        HttpClient   httpClient    = HttpClientBuilder.create().build();
+        HttpPost     post          = new HttpPost(targetURL);
+        StringEntity postingString = new StringEntity(o.toString());
+        post.setEntity(postingString);
+        post.setHeader("Content-type", "application/json");
+        HttpResponse  response = httpClient.execute(post);
+        HttpEntity entity = response.getEntity();
+        String responseString = EntityUtils.toString(entity, "UTF-8");
+        return new JSONObject(responseString);
     }
 }

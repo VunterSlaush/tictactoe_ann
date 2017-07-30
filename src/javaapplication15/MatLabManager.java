@@ -47,9 +47,12 @@ public class MatLabManager
         return result;
     }
     
-    public int execForPosition(String command) throws MatlabInvocationException
-    {
+    public int execForPosition(Matrix m) throws MatlabInvocationException
+    {   
+        String command = "round(sim(net,"+m.toString()+"));";
+        System.out.println("Enviando:"+command);
         Object[] objs = proxy.returningEval(command,1);
+        
         double[] objs2 = (double[])objs[0];
         int value = 0;
         int aux;

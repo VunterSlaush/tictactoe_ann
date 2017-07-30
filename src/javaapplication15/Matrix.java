@@ -68,8 +68,12 @@ public class Matrix
     {   
         String str  = "[";
         for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                str+= matrix[i][j] + ";";
+            for (int j = 0; j < 3; j++) 
+            {   
+                if(Principal.matlab)
+                    str+= matrix[i][j] + ";";
+                else
+                    str+= matrix[i][j] + ",";
             }
         }
         str+="]";
@@ -95,7 +99,7 @@ public class Matrix
        return false;
     }
 
-    private boolean resuelta(int p) 
+    public boolean resuelta(int p) 
     {
         return (matrix[0][0] == p && matrix[0][1] == p &&  matrix[0][2] == p ) ||
                 (matrix[1][0] == p && matrix[1][1] == p &&  matrix[1][2] == p ) ||
